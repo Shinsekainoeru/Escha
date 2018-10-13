@@ -5,5 +5,3 @@ The challenge is simple. You watch anime as many as you can and satisfy the epis
 But you have a limitation: You can only add up to 3 anime on the currently watched list.
 
 Feel free to download and use this but please note that I created this only for myself. The reason why I uploaded this on github is because I need backup files as much as possible because I'm autistic and too scared to lose my anime database that I developed in years. I'd be happy if someone give me an idea. Perhaps I will also create a platform for other people with their rules if they demand it and/or give me an incentive.
-
-please say something I'm lonely.

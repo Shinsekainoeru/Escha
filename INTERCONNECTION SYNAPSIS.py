@@ -1294,12 +1294,12 @@ class SBL_Dest_Episode(RecycleDataViewBehavior, BoxLayout):
 	def apply_selection(self, rv, index, is_selected):
 		self.selected = is_selected
 		if self.selected: App.get_running_app().root.Select_Episode(rv.data[index]['item_Fragment'], rv.data[index]['item_Extension_Real'])
-class InterstellariumNexus(App):
+class InterconnectionSynapsis(App):
 	def build(self):
-		self.title = 'Interstellarium Nexus'
+		self.title = 'Interconnection Synapsis'
 		Window.maximize()
 		Config.set('input', 'mouse', 'mouse,disable_multitouch')
 		return Nexus_Initial()
 
 #Run App
-if __name__ == '__main__': InterstellariumNexus().run()
+if __name__ == '__main__': InterconnectionSynapsis().run()

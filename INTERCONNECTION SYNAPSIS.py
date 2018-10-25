@@ -1,9 +1,18 @@
 import pandas as pd
 import os
+import shutil
 import datetime
 import math
+import random
 import numpy as np
 import pyperclip
+import dropbox
+import threading
+
+import win32gui
+import win32con
+import winxpgui
+import win32api
 
 from kivy.app import App
 from kivy.lang import Builder
@@ -11,7 +20,6 @@ from kivy.config import Config
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.uix.screenmanager import ScreenManager, Screen
-
 from kivy.uix.recycleview import RecycleView
 from kivy.uix.behaviors import FocusBehavior
 from kivy.uix.recycleview.layout import LayoutSelectionBehavior
@@ -89,6 +97,7 @@ Builder.load_string('''
 	item_Protocol: ''
 	item_Status: ''
 	item_Fragmented: ''
+	item_color_World: (1,1,1,1)
 	item_color_Extension: (0,1,1,1)
 	item_color_Status: (0,.5,1,1)
 	Label:
@@ -98,7 +107,7 @@ Builder.load_string('''
 	Label:
 		text: root.item_World
 		halign: 'left'
-		color: (1,1,1,1)
+		color: root.item_color_World
 	Label:
 		text: root.item_Protocol
 		size_hint_x: .36
@@ -127,6 +136,7 @@ Builder.load_string('''
 		height: self.minimum_height
 		orientation: 'vertical'
 		multiselect: False
+		touch_multiselect: True
 		cols: 1
 <SBL_Dest_Episode>:
 	orientation: 'horizontal'
@@ -138,15 +148,16 @@ Builder.load_string('''
 			pos: self.pos
 	item_Fragment: ''
 	item_Extension_Display: ''
+	item_color: (0,1,1,1)
 	Label:
 		text: root.item_Fragment
 		halign: 'left'
-		color: (0,1,1,1)
+		color: root.item_color
 	Label:
 		size_hint_x: 0.1
 		text: root.item_Extension_Display
 		halign: 'center'
-		color: (0,1,1,1)
+		color: root.item_color
 
 <Nexus_Initial>:
 	BoxLayout:
@@ -223,7 +234,6 @@ Builder.load_string('''
 					size_hint_y: .1
 					pos_hint: {'x': .475, 'y': .275}
 					on_release: root.Plus(False)
-
 			ScreenManager:
 				id: Management_Menu
 				size_hint_x: 0.5
@@ -244,12 +254,12 @@ Builder.load_string('''
 							id: Button_Menu_Assemble
 							text: 'Assemble'
 							disabled: True
-							on_release: root.ids.Management_Menu.current = 'Screen_Menu_Assemble'
+							on_release: [root.ids.Management_Misc.current, root.ids.Management_Menu.current] = ['Screen_Misc_Anime', 'Screen_Menu_Assemble_Anime']
 						Button:
 							id: Button_Menu_SelectionMenu
 							text: 'Selection Menu'
 							disabled: True
-							on_release: root.ids.Management_Menu.current = 'Screen_Menu_Selection'
+							on_release: [root.Select_Mode_Anime('Fragmentation'), root.Select_Anime(root.ids.Label_Selected_Anime_Name.text)]
 						Button:
 							text: 'Options'
 							on_release: [root.ids.Management_Misc.current, root.ids.Management_Menu.current] = ['Screen_Misc_Options', 'Screen_Menu_Options']
@@ -257,11 +267,11 @@ Builder.load_string('''
 							id: Button_Menu_Save
 							text: 'Overwrite Memoria'
 							on_release: root.Save(True)
-						Label:
-						Label:
 						Button:
 							text: 'Back to Reality'
 							on_release: app.stop()
+						Label:
+						Label:
 				Screen:
 					name: 'Screen_Menu_Selection'
 					GridLayout:
@@ -301,7 +311,7 @@ Builder.load_string('''
 							on_release: root.Resynapse()
 						Button:
 							id: Button_Menu_Conquer
-							text: 'Connect World'
+							text: 'Resonate'
 							disabled: True
 							on_release: root.ConquerNew()
 						Button:
@@ -326,34 +336,38 @@ Builder.load_string('''
 							text: 'Mission Function'
 							on_release: root.ids.Management_Misc_Options.current = 'Screen_Options_MissionFunction'
 						Button:
-							text: 'Backup'
+							text: 'Create Remnant'
 							on_release: root.ids.Management_Misc_Options.current = 'Screen_Options_Backup'
+							on_release: root.Backup_Reset()
 						Button:
 							text: 'Synchronize'
 							on_release: root.ids.Management_Misc_Options.current = 'Screen_Options_Synchronize'
 						Button:
 							text: 'Memoria Settings'
 							on_release: root.ids.Management_Misc_Options.current = 'Screen_Options_Save'
-						Label:
-						Label:
-						Label:
+							on_release: root.Upload_Reset()
+						Button:
+							text: 'Lens Settings'
+							on_release: root.ids.Management_Misc_Options.current = 'Screen_Options_Screen'
 						Button:
 							text: 'Main Menu'
 							on_release: root.ids.Management_Menu.current = 'Screen_Menu_Main'
-
+						Label:
+						Label:
+						Label:
 				Screen:
-					name: 'Screen_Menu_Assemble'
+					name: 'Screen_Menu_Assemble_Anime'
 					GridLayout:
 						rows: 5
 						cols: 2
 						spacing: 30
 						padding: 30
 						Button:
-							id: Button_Menu_Install
+							id: Button_Menu_Install_Anime
 							text: 'Install'
-							on_release: [root.ids.Management_Menu.current, root.ids.Management_Misc_Mode.current] = ['Screen_Menu_Install', 'Screen_Mode_Install']
+							on_release: [root.ids.Management_Menu.current, root.ids.Management_Misc_Mode.current] = ['Screen_Menu_Install_Anime', 'Screen_Mode_Install']
 						Button:
-							id: Button_Menu_Uninstall
+							id: Button_Menu_Uninstall_Anime
 							text: 'Uninstall'
 							on_release: root.Remove_Anime([root.ids.List_Dest_Anime.data[i]['item_World'] for i in root.ids.List_Dest_Anime._layout_manager.selected_nodes])
 						Button:
@@ -364,16 +378,41 @@ Builder.load_string('''
 							id: Button_Menu_Execute
 							text: 'Execute'
 							disabled: True
-							on_release: root.Combine_Execute()
-						Label:
-						Label:
-						Label:
-						Label:
 						Button:
 							text: 'Main Menu'
 							on_release: root.ids.Management_Menu.current = 'Screen_Menu_Main'
+						Label:
+						Label:
+						Label:
+						Label:
 				Screen:
-					name: 'Screen_Menu_Install'
+					name: 'Screen_Menu_Assemble_Episode'
+					GridLayout:
+						rows: 5
+						cols: 2
+						spacing: 30
+						padding: 30
+						Button:
+							id: Button_Menu_Install_Episode
+							text: 'Install'
+							on_release: root.ids.Management_Misc_List_Episode.current = 'Screen_List_Episode_Install'
+							on_release: root.ids.Button_Menu_Install_Episode.disabled = root.ids.Button_Menu_Uninstall_Episode.disabled = root.ids.Button_Menu_Transfer.disabled = True
+						Button:
+							id: Button_Menu_Uninstall_Episode
+							text: 'Uninstall'
+							on_release: root.Remove_Episode([root.ids.List_Dest_Episode.data[i]['item_Fragment'] for i in root.ids.List_Dest_Episode._layout_manager.selected_nodes])
+						Button:
+							id: Button_Menu_Transfer
+							text: 'Transfer'
+							on_release: root.Transfer_Select()
+						Label:
+						Label:
+						Label:
+						Label:
+						Label:
+						Label:
+				Screen:
+					name: 'Screen_Menu_Install_Anime'
 					BoxLayout:
 						orientation: 'vertical'
 						spacing: 50
@@ -390,8 +429,7 @@ Builder.load_string('''
 							disabled: root.ids.Text_Install_Anime_Name.text == ''
 						Button:
 							text: 'Cancel Installation'
-							on_release: root.ids.Management_Menu.current = 'Screen_Menu_Assemble'
-							on_release: root.ids.Management_Misc_Mode.current = 'Screen_Mode_Destination'
+							on_release: [root.ids.Management_Menu.current, root.ids.Management_Misc_Mode.current] = ['Screen_Menu_Assemble_Anime', 'Screen_Mode_Destination'] 
 
 			ScreenManager:
 				id: Management_Misc
@@ -420,6 +458,10 @@ Builder.load_string('''
 								id: Button_Mode_IncertusTerrae
 								text: 'Incertus Terrae'
 								on_release: root.Select_Mode_Anime(self.text)
+							Button:
+								id: Button_Mode_Randomize
+								text: 'Randomize'
+								on_release: root.Select_Anime_Randomize()
 							Button:
 								id: Button_Mode_Assemble
 								text: 'Assemble'
@@ -519,7 +561,7 @@ Builder.load_string('''
 										size_hint_y: .1
 										pos_hint: {'x':.1 , 'y': .45}
 										on_text: self.text = self.text.replace('/', '-').replace(":", '-').replace('*', '-').replace("?", '-').replace('"', '-').replace('<', '-').replace('>', '-').replace('|', '-').replace('\\\\', '-')
-										
+										on_text: root.Install_Anime_Check()
 									TextInput:
 										id: Text_Install_Anime_Episodes
 										size_hint_x: .2
@@ -537,7 +579,7 @@ Builder.load_string('''
 							size_hint_y: .1
 							Button:
 								text: '<<<'
-								on_release: root.ids.Management_Misc.current = 'Screen_Misc_Anime'
+								on_release: [root.ids.Management_Menu.current, root.ids.Management_Misc.current] = ['Screen_Menu_Assemble_Anime' if root.ids.Management_Menu.current == 'Screen_Menu_Assemble_Episode' else root.ids.Management_Menu.current, 'Screen_Misc_Anime']
 							Button:
 								id: Button_Mode_Destination
 								text: 'Destination'
@@ -570,7 +612,32 @@ Builder.load_string('''
 										size_hint_x: .2
 										size_hint_y: .1
 										pos_hint: {'x':.5, 'y': .45}
-										on_release: root.PopulateWorld(root.ids.Text_List_Episode_Populate.text)
+										on_release: root.Populate(root.ids.Text_List_Episode_Populate.text)
+							Screen:
+								name: 'Screen_List_Episode_Install'
+								FloatLayout:
+									TextInput:
+										id: Text_Install_Episode_Name
+										size_hint_x: .8
+										size_hint_y: .1
+										pos_hint: {'x':.1, 'y': .6}
+										on_text: self.text = self.text.replace('/', '-').replace(":", '-').replace('*', '-').replace("?", '-').replace('"', '-').replace('<', '-').replace('>', '-').replace('|', '-').replace('\\\\', '-')
+										on_text: root.Install_Episode_Check()
+									Button:
+										text: 'Install Fragment'
+										size_hint_x: .3
+										size_hint_y: .1
+										pos_hint: {'x':.6, 'y': .3}
+										on_release: root.Install_Episode()
+										on_release: root.ids.Button_Menu_Install_Episode.disabled = root.ids.Button_Menu_Uninstall_Episode.disabled = root.ids.Button_Menu_Transfer.disabled = False
+										disabled: root.ids.Text_Install_Episode_Name.text == ''
+									Button:
+										text: 'Cancel Installation'
+										size_hint_x: .3
+										size_hint_y: .1
+										pos_hint: {'x':.1, 'y': .3}
+										on_release: root.Select_Mode_Episode('Assemble')
+										on_release: root.ids.Button_Menu_Install_Episode.disabled = root.ids.Button_Menu_Uninstall_Episode.disabled = root.ids.Button_Menu_Transfer.disabled = False
 
 				Screen:
 					name: 'Screen_Misc_Stats'
@@ -794,10 +861,148 @@ Builder.load_string('''
 										on_release: root.MissionFunction_Confirm()
 						Screen:
 							name: 'Screen_Options_Backup'
+							FloatLayout:
+								BoxLayout:
+									size_hint_x: .8
+									size_hint_y: .08
+									pos_hint: {'x':.1, 'y':.7}
+									TextInput:
+										id: Text_Backup_Protocol
+										on_text: root.Backup_Check()
+									Button:
+										size_hint_x: .1
+										text: 'Set'
+										on_release: root.Backup_Set()
+								TextInput:
+									id: Text_Backup_Msg
+									size_hint_x: .8
+									size_hint_y: .08
+									pos_hint: {'x':.1, 'y':.5}
+								BoxLayout:
+									size_hint_x: .7
+									size_hint_y: .08
+									pos_hint: {'x': 0, 'y': .3}
+									Label:
+										text: 'On existing:'
+										halign: 'left'
+									Button:
+										text:'<'
+										size_hint_x: 0.1
+										on_release: root.ids.Label_Backup_OnExisting.text = 'Duplicate' if root.ids.Label_Backup_OnExisting.text == 'Overwrite' else 'Cancel' if root.ids.Label_Backup_OnExisting.text == 'Duplicate' else 'Overwrite'
+									Label:
+										id: Label_Backup_OnExisting
+										text: 'Duplicate'
+									Button:
+										text:'>'
+										size_hint_x: 0.1
+										on_release: root.ids.Label_Backup_OnExisting.text = 'Cancel' if root.ids.Label_Backup_OnExisting.text == 'Overwrite' else 'Duplicate' if root.ids.Label_Backup_OnExisting.text == 'Cancel' else 'Overwrite'
+								Button:
+									size_hint_x: .2
+									size_hint_y: .08
+									pos_hint: {'x':.4, 'y':.1}
+									text: 'Create Remnant'
+									on_release: root.Backup()
 						Screen:
 							name: 'Screen_Options_Synchronize'
+							FloatLayout:
+								BoxLayout:
+									size_hint_x: .7
+									size_hint_y: .08
+									pos_hint: {'x': 0, 'y': .7}
+									Label:
+										text: 'On undetected Protocol:'
+										halign: 'left'
+									Button:
+										text:'<'
+										size_hint_x: 0.1
+										on_release: root.ids.Label_Synch_OnUndetected.text = 'Keep' if root.ids.Label_Synch_OnUndetected.text == 'Remove' else 'Remove'
+									Label:
+										id: Label_Synch_OnUndetected
+										text: 'Keep'
+									Button:
+										text:'>'
+										size_hint_x: 0.1
+										on_release: root.ids.Label_Synch_OnUndetected.text = 'Keep' if root.ids.Label_Synch_OnUndetected.text == 'Remove' else 'Remove'
+								BoxLayout:
+									size_hint_x: .7
+									size_hint_y: .08
+									pos_hint: {'x': 0, 'y': .4}
+									Label:
+										text: 'On duplicated World:'
+										halign: 'left'
+									Button:
+										text:'<'
+										size_hint_x: 0.1
+										on_release: root.ids.Label_Synch_OnDuplicated.text = 'Ignore' if root.ids.Label_Synch_OnDuplicated.text == 'Spare One' else 'Remove All' if root.ids.Label_Synch_OnDuplicated.text == 'Ignore' else 'Spare One'
+									Label:
+										id: Label_Synch_OnDuplicated
+										text: 'Ignore'
+									Button:
+										text:'>'
+										size_hint_x: 0.1
+										on_release: root.ids.Label_Synch_OnDuplicated.text = 'Remove All' if root.ids.Label_Synch_OnDuplicated.text == 'Spare One' else 'Ignore' if root.ids.Label_Synch_OnDuplicated.text == 'Remove All' else 'Spare One'
+								Button:
+									size_hint_x: .2
+									size_hint_y: .08
+									pos_hint: {'x':.4, 'y':.1}
+									text: 'Synchronize'
+									on_release: root.Synchronize()
 						Screen:
 							name: 'Screen_Options_Save'
+							FloatLayout:
+								BoxLayout:
+									size_hint_x: 1
+									size_hint_y: .1
+									pos_hint: {'x':0, 'y':.7}
+									CheckBox:
+										id: Check_Upload
+										size_hint_x: .1
+										active: True
+										on_active: root.ids.Text_AccessToken.disabled = root.ids.Button_SetAccessToken.disabled = not self.active
+									Label: 
+										text: 'Duplicate to Mare Aeternam'
+										halign: 'left'
+								BoxLayout:
+									size_hint_x: .8
+									size_hint_y: .08
+									pos_hint: {'x':.1, 'y':.3}
+									TextInput:
+										id: Text_AccessToken
+										disabled_foreground_color: (1,1,1,1)
+									Button:
+										id: Button_SetAccessToken
+										text: 'Set'
+										size_hint_x: .1
+										on_release: root.Upload_Set()
+						Screen:
+							name: 'Screen_Options_Screen'
+							FloatLayout:
+								Label:
+									size_hint_x:.2
+									size_hint_y:.1
+									pos_hint: {'x':0, 'y':.75}
+									text: 'Lens Power'
+									halign: 'left'
+								Slider:
+									size_hint_x:.8
+									size_hint_y:.1
+									pos_hint: {'x':.1, 'y':.6}
+									min: 100
+									max: 255
+									value: 255
+									on_touch_move: root.SetOpacity(self.value)
+									on_touch_up: root.SetOpacity(self.value)
+								BoxLayout:
+									size_hint_x: 1
+									size_hint_y: .1
+									pos_hint: {'x':0, 'y':.15}
+									CheckBox:
+										id: Check_FullScreen
+										size_hint_x: .1
+										on_active: root.FullScreen(self.active)
+									Label:
+										text: 'Lens Takeover'
+										halign: 'left'
 
 		Label:
 			id: MessageBox
@@ -808,7 +1013,6 @@ Builder.load_string('''
 class Nexus_Initial(Screen):
 	def __init__(self, **kwargs):
 		super(Nexus_Initial, self).__init__(**kwargs)
-		self.Select_Mode_Anime('Fragmentation')
 		for i in range(3): self.Fill_List_Frag(i)
 		global Day_Initial, Year_Initial, MessageCounter
 		Day_Initial = datetime.datetime.strptime(Settings['Day_Initial'], '%Y-%m-%d %H:%M:%S')
@@ -817,11 +1021,14 @@ class Nexus_Initial(Screen):
 		self.Time_Refresh()
 		def Timer(dt): self.Time_Refresh()
 		Clock.schedule_interval(Timer, .1)
+		self.Select_Mode_Anime('Fragmentation')
 		self.Select_Anime(None)
 		self.Update_Stats(True,True,True)
 		self.Update_Mission()
 		self.AlterProtocol_Reset()
 		self.MissionFunction_Reset()
+		self.Upload_Reset()
+		self.Backup_Reset()
 
 	def Time_Refresh(self):
 		global Day_Running, Year_Running, Day_Initial, Year_Initial, MessageCounter
@@ -834,6 +1041,7 @@ class Nexus_Initial(Screen):
 		self.ids.TimeClock_Date.text = datetime.datetime.now().strftime('%m/%d/%Y  %X')
 		self.ids.TimeClock_DaysElapsed.text = 'Day: ' + str((datetime.datetime.now() - datetime.datetime(Year_Running,1,1,0,0,0,0)).days+1) + '/' + str((datetime.datetime(Year_Running+1,1,1,0,0,0,0) - datetime.datetime(Year_Running,1,1,0,0,0,0)).days)
 		[self.AlterProtocol_Check(i, False) for i in range(5)]
+		self.Update_Stats(Enable_Speed=True)
 		if MessageCounter <= 0: self.ids.MessageBox.text = ''
 		else:  MessageCounter -= .1
 
@@ -846,8 +1054,8 @@ class Nexus_Initial(Screen):
 		Settings['Year_Episodes'] = MOD['Fragmented'].values.sum()
 
 	def Fill_List_Frag(self,i):
-		x = MOD['World'][MOD['Status'] == 'In Progress'][MOD['Order'] == i]
-		y = MOD['Fragmented'][MOD['Status'] == 'In Progress'][MOD['Order'] == i]
+		x = MOD['World'][MOD['Status'] == 'Resonated'][MOD['Order'] == i]
+		y = MOD['Fragmented'][MOD['Status'] == 'Resonated'][MOD['Order'] == i]
 		if len(x) == 1:
 			exec('self.ids.Text_Frag_Anime_' + str(i+1) + '.text = "' + x.reset_index(drop=True)[0] + '"')
 			exec('self.ids.Text_Frag_Episode_' + str(i+1) + '.text = "' + str(y.reset_index(drop=True)[0]) + '"')
@@ -860,8 +1068,9 @@ class Nexus_Initial(Screen):
 								 'item_Protocol': str(Data['Protocol'][x]),
 								 'item_Status': str(Data['Status'][x]),
 								 'item_Fragmented': str(Data['Fragmented'][x]) + '/' + str(len(Data['Fragments'][x]) if Data['Protocol'][x] in Protocol[:6] else str('???')),
+								 'item_color_World': (1,1,1,1) if Selected_Mode_Anime != 'Assemble' else (1,.5,1,1),
 								 'item_color_Extension': (0,1,1,1) if Data['Protocol'][x] in Protocol[:4] else (1,1,0,1) if Data['Protocol'][x] in Protocol[4:6] else (1,.5,0,1),
-								 'item_color_Status': (1,1,1,1) if Data['Status'][x] == 'Conquered' else (0,1,0,1) if Data['Status'][x] == 'In Progress' else (.5,.5,.5,1)} for x in range(len(Data))]
+								 'item_color_Status': (1,1,1,1) if Data['Status'][x] == 'Conquered' else (0,1,0,1) if Data['Status'][x] == 'Resonated' else (.5,.5,.5,1)} for x in range(len(Data))]
 
 	def Select_Mode_Anime(self, Mode):
 		global Selected_Mode_Anime
@@ -872,7 +1081,7 @@ class Nexus_Initial(Screen):
 			self.ids.List_Dest_Anime._layout_manager.multiselect = False
 			self.ids.Button_Menu_Assemble.disabled = True
 			self.Fill_List_Dest_Anime(MOD)
-			if self.ids.Management_Menu.current == 'Screen_Menu_Assemble': self.ids.Management_Menu.current = 'Screen_Menu_Main'
+			if self.ids.Management_Menu.current in ['Screen_Menu_Assemble_Anime', 'Screen_Menu_Install_Anime']: self.ids.Management_Menu.current = 'Screen_Menu_Main'
 			self.ids.Management_Misc_Mode.current = 'Screen_Mode_Destination'
 		elif Mode == 'Reminiscence':
 			self.ids.Button_Mode_Reminiscence.disabled = True
@@ -880,7 +1089,7 @@ class Nexus_Initial(Screen):
 			self.ids.List_Dest_Anime._layout_manager.multiselect = False
 			self.ids.Button_Menu_Assemble.disabled = True
 			self.Fill_List_Dest_Anime(MOD[MOD['Status'] == 'Conquered'].set_index('Order'))
-			if self.ids.Management_Menu.current == 'Screen_Menu_Assemble': self.ids.Management_Menu.current = 'Screen_Menu_Main'
+			if self.ids.Management_Menu.current in ['Screen_Menu_Assemble_Anime', 'Screen_Menu_Install_Anime']: self.ids.Management_Menu.current = 'Screen_Menu_Main'
 			self.ids.Management_Misc_Mode.current = 'Screen_Mode_Destination'
 		elif Mode == 'Incertus Terrae':
 			self.ids.Button_Mode_IncertusTerrae.disabled = True
@@ -888,14 +1097,14 @@ class Nexus_Initial(Screen):
 			self.ids.List_Dest_Anime._layout_manager.multiselect = False
 			self.ids.Button_Menu_Assemble.disabled = True
 			self.Fill_List_Dest_Anime(MOD.query('World in ' + str(next(os.walk(Settings['Protocol: INCERTUS TERRAE']))[1])).reset_index(drop=True))
-			if self.ids.Management_Menu.current == 'Screen_Menu_Assemble': self.ids.Management_Menu.current = 'Screen_Menu_Main'
+			if self.ids.Management_Menu.current in ['Screen_Menu_Assemble_Anime', 'Screen_Menu_Install_Anime']: self.ids.Management_Menu.current = 'Screen_Menu_Main'
 			self.ids.Management_Misc_Mode.current = 'Screen_Mode_Destination'
 		elif Mode == 'Fragmentation':
 			self.ids.Button_Mode_Fragmentation.disabled = True
 			self.ids.Button_Mode_Assemble.disabled = self.ids.Button_Mode_Librorum.disabled = self.ids.Button_Mode_Reminiscence.disabled = self.ids.Button_Mode_IncertusTerrae.disabled = False
 			self.ids.List_Dest_Anime._layout_manager.multiselect = True
 			self.ids.Button_Menu_Assemble.disabled = True
-			if self.ids.Management_Menu.current == 'Screen_Menu_Assemble': self.ids.Management_Menu.current = 'Screen_Menu_Main'
+			if self.ids.Management_Menu.current in ['Screen_Menu_Assemble_Anime', 'Screen_Menu_Install_Anime']: self.ids.Management_Menu.current = 'Screen_Menu_Main'
 			self.ids.Management_Misc_Mode.current = 'Screen_Mode_Fragmentation'
 		elif Mode == 'Assemble':
 			self.ids.Button_Mode_Assemble.disabled = True
@@ -903,10 +1112,10 @@ class Nexus_Initial(Screen):
 			self.ids.List_Dest_Anime._layout_manager.multiselect = True
 			self.ids.Button_Menu_Assemble.disabled = False
 			self.Fill_List_Dest_Anime(MOD.query('Protocol in ' + str(Protocol[4:])).reset_index(drop=True))
-			self.ids.Management_Menu.current = 'Screen_Menu_Assemble'
+			self.ids.Management_Menu.current = 'Screen_Menu_Assemble_Anime'
 			self.ids.Management_Misc_Mode.current = 'Screen_Mode_Destination'
 			self.ids.Button_Menu_Execute.disabled = True
-			self.ids.Button_Menu_Combine.disabled = self.ids.Button_Menu_Install.disabled = self.ids.Button_Menu_Uninstall.disabled = False
+			self.ids.Button_Menu_Combine.disabled = self.ids.Button_Menu_Install_Anime.disabled = self.ids.Button_Menu_Uninstall_Anime.disabled = False
 
 	def Select_Mode_Episode(self, Mode):
 		global Selected_Mode_Episode
@@ -914,29 +1123,41 @@ class Nexus_Initial(Screen):
 		self.ids.List_Dest_Episode._layout_manager.clear_selection()
 		self.ids.List_Dest_Episode.refresh_from_data()
 		if Mode == 'Destination':
+			self.ids.List_Dest_Episode._layout_manager.multiselect = False
 			self.ids.Button_Mode_Destination.disabled = True
 			self.ids.Button_Mode_NovusMundus.disabled = self.ids.Button_Mode_NovusMundus.disabled = True if Selected_Anime_Name not in next(os.walk(Settings['Protocol: INCERTUS TERRAE']))[1] else False
 			self.ids.Button_Mode_IncertusFragments.disabled = False
 			if Selected_Anime_Protocol in Protocol[:4]:
-				List_Dest_Episode.data = [{'item_Fragment': str(x)[:-4], 'item_Extension_Real': str(x)[-3:], 'item_Extension_Display': str(x)[-3:].lower()} for x in MOD['Fragments'][MOD['World'] == Selected_Anime_Name].reset_index(drop=True)[0]]
+				List_Dest_Episode.data = [{'item_Fragment': str(x)[:-4], 'item_Extension_Real': str(x)[-3:], 'item_Extension_Display': str(x)[-3:].lower(), 'item_color': (0,1,1,1)} for x in MOD['Fragments'][MOD['World'] == Selected_Anime_Name].reset_index(drop=True)[0]]
 				self.ids.Management_Misc_List_Episode.current = 'Screen_List_Episode_Loaded'
 			elif Selected_Anime_Protocol in Protocol[4:6]:
-				List_Dest_Episode.data = [{'item_Fragment': str(x)[:-4], 'item_Extension_Real': '', 'item_Extension_Display': '???'} for x in MOD['Fragments'][MOD['World'] == Selected_Anime_Name].reset_index(drop=True)[0]]
+				List_Dest_Episode.data = [{'item_Fragment': str(x)[:-4], 'item_Extension_Real': '', 'item_Extension_Display': '???', 'item_color': (0,1,1,1)} for x in MOD['Fragments'][MOD['World'] == Selected_Anime_Name].reset_index(drop=True)[0]]
+				self.ids.Management_Misc_List_Episode.current = 'Screen_List_Episode_Loaded'
+			else:
+				List_Dest_Episode.data = [{'item_Fragment': Selected_Anime_Name + ' Episode ' + str(x+1), 'item_Extension_Real': '', 'item_Extension_Display': '???', 'item_color': (1,.5,0,1)} for x in range(100)]
+				self.ids.Management_Misc_List_Episode.current = 'Screen_List_Episode_Loaded'
+		elif Mode == 'Mundus Novus':
+			self.ids.List_Dest_Episode._layout_manager.multiselect = False
+			self.ids.Button_Mode_NovusMundus.disabled = True
+			self.ids.Button_Mode_Destination.disabled = self.ids.Button_Mode_IncertusFragments.disabled = False
+			List_Dest_Episode.data = [{'item_Fragment': str(x)[:-4], 'item_Extension_Real': str(x)[-3:], 'item_Extension_Display': str(x)[-3:].lower(), 'item_color': (0,1,1,1)} for x in next(os.walk(Settings['Protocol: INCERTUS TERRAE'] + '\\' + Selected_Anime_Name))[2]]
+			self.ids.Management_Misc_List_Episode.current = 'Screen_List_Episode_Loaded'
+		elif Mode == 'Incertus Fragments':
+			self.ids.List_Dest_Episode._layout_manager.multiselect = False
+			self.ids.Button_Mode_IncertusFragments.disabled = True
+			self.ids.Button_Mode_Destination.disabled = False
+			self.ids.Button_Mode_NovusMundus.disabled = True if Selected_Anime_Name not in next(os.walk(Settings['Protocol: INCERTUS TERRAE']))[1] else False
+			List_Dest_Episode.data = [{'item_Fragment': str(x)[:-4], 'item_Extension_Real': str(x)[-3:], 'item_Extension_Display': str(x)[-3:].lower(), 'item_color': (0,1,1,1)} for x in next(os.walk(Settings['Recently_Downloaded']))[2]]
+			self.ids.Management_Misc_List_Episode.current = 'Screen_List_Episode_Loaded'
+		elif Mode == 'Assemble':
+			self.ids.List_Dest_Episode._layout_manager.multiselect = True
+			self.ids.Button_Mode_Destination.disabled = self.ids.Button_Mode_NovusMundus.disabled = self.ids.Button_Mode_IncertusFragments.disabled = True
+			if Selected_Anime_Protocol_Edit in Protocol[4:6]:
+				List_Dest_Episode.data = [{'item_Fragment': str(x)[:-4], 'item_Extension_Real': '', 'item_Extension_Display': '', 'item_color': (1,.5,1,1)} for x in MOD['Fragments'][MOD['World'] == Selected_Anime_Name_Edit].reset_index(drop=True)[0]]
 				self.ids.Management_Misc_List_Episode.current = 'Screen_List_Episode_Loaded'
 			else:
 				List_Dest_Episode.data = []
 				self.ids.Management_Misc_List_Episode.current = 'Screen_List_Episode_Empty'
-		elif Mode == 'Mundus Novus':
-			self.ids.Button_Mode_NovusMundus.disabled = True
-			self.ids.Button_Mode_Destination.disabled = self.ids.Button_Mode_IncertusFragments.disabled = False
-			List_Dest_Episode.data = [{'item_Fragment': str(x)[:-4], 'item_Extension_Real': str(x)[-3:], 'item_Extension_Display': str(x)[-3:].lower()} for x in next(os.walk(Settings['Protocol: INCERTUS TERRAE'] + '\\' + Selected_Anime_Name))[2]]
-			self.ids.Management_Misc_List_Episode.current = 'Screen_List_Episode_Loaded'
-		elif Mode == 'Incertus Fragments':
-			self.ids.Button_Mode_IncertusFragments.disabled = True
-			self.ids.Button_Mode_Destination.disabled = False
-			self.ids.Button_Mode_NovusMundus.disabled = self.ids.Button_Mode_NovusMundus.disabled = True if Selected_Anime_Name not in next(os.walk(Settings['Protocol: INCERTUS TERRAE']))[1] else False
-			List_Dest_Episode.data = [{'item_Fragment': str(x)[:-4], 'item_Extension_Real': str(x)[-3:], 'item_Extension_Display': str(x)[-3:].lower()} for x in next(os.walk(Settings['Recently_Downloaded']))[2]]
-			self.ids.Management_Misc_List_Episode.current = 'Screen_List_Episode_Loaded'
 
 	def Select_Anime(self, Selection):
 		global Selected_Anime_Name, Selected_Anime_Protocol, Selected_Anime_Status, Selected_Anime_Fragmented, Selected_Anime_Fragments
@@ -965,6 +1186,20 @@ class Nexus_Initial(Screen):
 			self.ids.Button_Menu_SelectionMenu.disabled = False
 			self.DisableButtons(Selected_Anime_Status)
 
+	def Select_Anime_Assemble(self, Selection, Path):
+		global Selected_Anime_Name_Edit, Selected_Anime_Protocol_Edit 
+		Selected_Anime_Name_Edit = Selection
+		Selected_Anime_Protocol_Edit = Path
+		self.Select_Mode_Episode('Assemble')
+		self.ids.Management_Menu.current = 'Screen_Menu_Assemble_Episode'
+		self.ids.Management_Misc.current = 'Screen_Misc_Episode'
+		self.ids.Button_Menu_Install_Episode.disabled = self.ids.Button_Menu_Uninstall_Episode.disabled = self.ids.Button_Menu_Transfer.disabled = False
+
+	def Select_Anime_Randomize(self):
+		self.Select_Mode_Anime('Fragmentation')
+		i = random.randint(0, len(MOD) - 1)
+		self.Select_Anime(MOD['World'][i])
+
 	def Select_Episode(self, Selection, Extension):
 		global Selected_Episode_Name, Selected_Episode_Extension
 		Selected_Episode_Name = Selection
@@ -974,10 +1209,10 @@ class Nexus_Initial(Screen):
 		elif Selected_Mode_Episode == 'Incertus Fragments': Path = Settings['Recently_Downloaded'] + '\\' + Selection + '.' + Extension
 		if os.path.isfile(Path):
 			self.ids.ConquerorLens.source = Path
-			MsgBox(self, 'Destination connected. Fragmentation is ready.')
+			MsgBox(self, 'Aligning to: ' + Selected_Episode_Name + '. Fragmentation ready.')
 		else:
 			self.ids.ConquerorLens.source = ''
-			MsgBox(self, 'Destination not found. Fragmentation aborted.')
+			if Selected_Anime_Protocol[:9] != 'AMORPHOUS': MsgBox(self, 'Destination not found. Fragmentation of ' + Selected_Episode_Name + ' aborted.')
 
 	def Select_Episode_Alter(self):
 		Path = self.ids.ConquerorLens.source
@@ -989,7 +1224,7 @@ class Nexus_Initial(Screen):
 		if Enable_Worlds: self.ids.Label_Stats_Conquer_Worlds.text = str(len(MOD[MOD['Status'] == 'Conquered']))
 		if Enable_Fragments: self.ids.Label_Stats_Conquer_Fragments.text = str(MOD['Fragmented'].values.sum()) + ' (' + ('+' if MOD['Fragmented'].values.sum() >= int(Settings['Day_Episodes']) else '') + str(MOD['Fragmented'].values.sum() - int(Settings['Day_Episodes'])) + ')'
 		if Enable_Progress: self.ids.Label_Stats_Conquer_Progress.text = str("{:.3%}".format(MOD.query('Protocol not in' + str(Protocol[6:]))['Fragmented'].values.sum() / MOD['Fragments'].apply(lambda x: len(x)).values.sum()))
-		#if Enable_Speed: 
+		if Enable_Speed: self.ids.Label_Stats_Conquer_Speed.text = str("{:.9}".format(MOD['Fragmented'].values.sum() / ((datetime.datetime.now() - datetime.datetime(2012, 8, 30)).days + (datetime.datetime.now() - datetime.datetime(2012, 8, 30)).seconds / 86400 + (datetime.datetime.now() - datetime.datetime(2012, 8, 30)).microseconds / (86400*1000000)))) #Avg speed since he recommended me Sword Art Online, 30 Aug 2012.
 
 	def Update_Mission(self):
 		self.ids.Label_Stats_Mission_Easy.text = str(int(Settings['Year_Episodes']) + math.ceil(eval(Settings['Objective_Easy'].replace("X", str((datetime.datetime.now() - datetime.datetime(Year_Running,1,1,0,0,0,0)).days+1)))))
@@ -997,12 +1232,21 @@ class Nexus_Initial(Screen):
 		self.ids.Label_Stats_Mission_Hard.text = str(int(Settings['Year_Episodes']) + math.ceil(eval(Settings["Objective_Hard"].replace("X", str((datetime.datetime.now() - datetime.datetime(Year_Running,1,1,0,0,0,0)).days+1)))))
 		self.ids.Label_Stats_Mission_Insane.text = str(int(Settings['Year_Episodes']) + math.ceil(eval(Settings["Objective_Insane"].replace("X", str((datetime.datetime.now() - datetime.datetime(Year_Running,1,1,0,0,0,0)).days+1)))))
 
+	def Update_Anime(self, Selection):
+		self.ids.List_Dest_Anime._layout_manager.clear_selection()
+		self.ids.List_Dest_Anime.refresh_from_data()
+		x = [i['item_World'] for i in self.ids.List_Dest_Anime.data]
+		if Selection in x: #Assign to RV
+			List_Dest_Anime.data[x.index(Selection)]['item_Protocol'] = MOD['Protocol'][MOD['World'] == Selection].reset_index(drop=True)[0]
+			List_Dest_Anime.data[x.index(Selection)]['item_Fragmented'] = str(MOD['Fragmented'][MOD['World'] == Selection].reset_index(drop=True)[0]) + '/' + str(len(MOD['Fragments'][MOD['World'] == Selection].reset_index(drop=True)[0]) if MOD['Protocol'][MOD['World'] == Selection].reset_index(drop=True)[0] in Protocol[:6] else '???')
+			List_Dest_Anime.data[x.index(Selection)]['item_color_Extension'] = (1,1,0,1) if MOD['Protocol'][MOD['World'] == Selection].reset_index(drop=True)[0] in Protocol[:6] else (1,.5,0,1)
+
 	def DisableButtons(self, Mode):
 		def Disable(self, Enables, Disables):
 			for i in Enables: exec('self.ids.' + i + '.disabled = False')
 			for i in Disables: exec('self.ids.' + i + '.disabled = True')
 		if Mode == 'Conquered': Disable(self, ['Button_Menu_Copy', 'Button_Menu_Source', 'Button_Menu_Materialize', 'Button_Menu_AlterLens'], ['Button_Menu_Conquer', 'Button_Menu_Desynapse', 'Button_Menu_Resynapse', 'Button_Menu_Defragment'])
-		elif Mode == 'In Progress': Disable(self, ['Button_Menu_Copy', 'Button_Menu_Source', 'Button_Menu_Materialize', 'Button_Menu_AlterLens', 'Button_Menu_Desynapse', 'Button_Menu_Defragment'], ['Button_Menu_Resynapse', 'Button_Menu_Conquer'])
+		elif Mode == 'Resonated': Disable(self, ['Button_Menu_Copy', 'Button_Menu_Source', 'Button_Menu_Materialize', 'Button_Menu_AlterLens', 'Button_Menu_Desynapse', 'Button_Menu_Defragment'], ['Button_Menu_Resynapse', 'Button_Menu_Conquer'])
 		elif Mode == 'Unfragmented': Disable(self, ['Button_Menu_Copy', 'Button_Menu_Source', 'Button_Menu_Materialize', 'Button_Menu_AlterLens', 'Button_Menu_Conquer'], ['Button_Menu_Resynapse', 'Button_Menu_Desynapse', 'Button_Menu_Defragment'])
 		elif Mode == 'Empty': Disable(self, ['Button_Menu_Conquer', 'Button_Menu_Resynapse'], ['Button_Menu_AlterLens', 'Button_Menu_Materialize', 'Button_Menu_Source', 'Button_Menu_Copy', 'Button_Menu_Desynapse', 'Button_Menu_Defragment'])
 		elif Mode == 'Nothing':  Disable(self, [], ['Button_Menu_Conquer', 'Button_Menu_Resynapse', 'Button_Menu_AlterLens', 'Button_Menu_Materialize', 'Button_Menu_Source', 'Button_Menu_Copy', 'Button_Menu_Desynapse', 'Button_Menu_Defragment', 'Button_Menu_SelectionMenu'])
@@ -1010,33 +1254,17 @@ class Nexus_Initial(Screen):
 	def Plus(self, Plus):
 		try: Selected_Anime_Name
 		except NameError: return
-		if Selected_Anime_Status in ['Conquered', 'In Progress']:
+		if Selected_Anime_Status in ['Conquered', 'Resonated']:
 			global Selected_Anime_Fragmented
 			Selected_Anime_Fragmented = MOD['Fragmented'][MOD['World'] == Selected_Anime_Name] = Selected_Anime_Fragmented + (1 if Plus else -1 if Selected_Anime_Fragmented != 0 else 0) #Update variable and assign to MOD
 			self.ids.Label_Selected_Anime_Fragmented.text = str(Selected_Anime_Fragmented) + '/' + (str(Selected_Anime_Fragments) if Selected_Anime_Fragments != 0 else '???') #Assign to Selection Label
-			if Selected_Anime_Status == 'In Progress': exec('self.ids.Text_Frag_Episode_' + str(int(MOD['Order'][MOD['World'] == Selected_Anime_Name]+1)) + '.text = str(Selected_Anime_Fragmented)') #Assign to Fragmentation TextInput
+			if Selected_Anime_Status == 'Resonated': exec('self.ids.Text_Frag_Episode_' + str(int(MOD['Order'][MOD['World'] == Selected_Anime_Name]+1)) + '.text = str(Selected_Anime_Fragmented)') #Assign to Fragmentation TextInput
 			self.ids.List_Dest_Anime._layout_manager.clear_selection()
 			self.ids.List_Dest_Anime.refresh_from_data()
 			x = [i['item_World'] for i in self.ids.List_Dest_Anime.data]
 			if Selected_Anime_Name in x: List_Dest_Anime.data[x.index(Selected_Anime_Name)]['item_Fragmented'] = self.ids.Label_Selected_Anime_Fragmented.text #Assign to RV
 			self.Update_Stats(False,True,True,True)
 			self.Save(False)
-
-	def PopulateWorld(self, n):
-		try: n = int(n)
-		except ValueError: n = 0
-		if n == 0:
-			MsgBox(self, 'Please fill the legit number of Fragments to populate.')
-		else:
-			global Selected_Anime_Protocol
-			MOD['Protocol'][MOD['World'] == Selected_Anime_Name] = Selected_Anime_Protocol = 'OUTER SAPIENTIA' if Selected_Anime_Protocol == 'AMORPHOUS SAPIENTIA' else 'OUTER MYSTERIUM'	#Change Protocol Name
-			MOD['Fragments'][MOD[MOD['World'] == Selected_Anime_Name].index[0]] = [Selected_Anime_Name + ' Episode ' + str(i+1) + '.mp4' for i in range(n)] #Fill Episodes
-			self.Select_Mode_Episode(Selected_Mode_Episode) #Refresh Episode List
-			self.Select_Mode_Anime(Selected_Mode_Anime) #Refresh Anime List
-			self.ids.Text_List_Episode_Populate.text = ''
-			self.ids.Management_Misc_List_Episode.current = 'Screen_List_Episode_Loaded'
-			self.Save(False)
-			MsgBox(self, Selected_Anime_Name + ' populated with ' + str(n) + (' Fragment.' if n == 1 else ' Fragments.'))
 
 	def Copy_Anime(self):
 		if self.ids.MessageBox.text[:13] == 'Copied World:': Copy(self, Settings['Protocol: ' + Selected_Anime_Protocol] + '\\' + Selected_Anime_Name, 'Copied World Protocol (Origin): ' + Selected_Anime_Name) if Selected_Anime_Protocol in Protocol[:4] else Copy(self, Settings['Protocol: INCERTUS TERRAE'] + '\\' + Selected_Anime_Name, 'Copied World Protocol (Alternative): ' + Selected_Anime_Name) #Copy World Path (Origin)
@@ -1045,7 +1273,7 @@ class Nexus_Initial(Screen):
 
 	def Copy_Episode(self):
 		try: Selected_Episode_Name
-		except NameError:  return MsgBox(self, 'No Fragment selected.')
+		except NameError: return MsgBox(self, 'No Fragment selected.')
 		if self.ids.MessageBox.text[22:25] == 'mp4': Copy(self, Settings['Protocol: INCERTUS TERRAE'] + '\\' + Selected_Anime_Name + '\\' + Selected_Episode_Name + '.flv', 'Materialize Fragment (flv): ' + Selected_Episode_Name)
 		elif self.ids.MessageBox.text[22:25] == 'flv': Copy(self, Settings['Protocol: INCERTUS TERRAE'] + '\\' + Selected_Anime_Name + '\\' + Selected_Episode_Name + '.mkv', 'Materialize Fragment (mkv): ' + Selected_Episode_Name)
 		elif self.ids.MessageBox.text[22:25] == 'mkv': Copy(self, Settings['Protocol: ' + Selected_Anime_Protocol] + '\\' + Selected_Anime_Name + '\\' + Selected_Episode_Name + '.' + Selected_Episode_Extension, 'Materialize Fragment (Path): ' + Selected_Episode_Name) if Selected_Anime_Protocol in Protocol[:4] else Copy(self, Settings['Protocol: INCERTUS TERRAE'] + '\\' + Selected_Anime_Name + '\\' + Selected_Episode_Name + '.mp4', 'Materialize Fragment (mp4): ' + Selected_Episode_Name)
@@ -1106,7 +1334,7 @@ class Nexus_Initial(Screen):
 		if len(MOD[MOD['Status'] == 'Conquered']) == 0: MsgBox(self, 'Reminiscence is empty. Nothing to resynapse.')
 		else:
 			Selection = MOD['World'][MOD['Status'] == 'Conquered'][MOD['Order'] == MOD['Order'].max()].reset_index(drop=True)[0]
-			MOD['Status'][MOD['World'] == Selection] = 'In Progress'
+			MOD['Status'][MOD['World'] == Selection] = 'Resonated'
 			i = MOD['Order'][MOD['World'] == Selection] = 0 if self.ids.Text_Frag_Anime_1.text == '' else 1 if self.ids.Text_Frag_Anime_2.text == '' else 2 #Assign Order to MOD
 			self.Fill_List_Frag(i)
 			self.Select_Mode_Anime('Fragmentation')
@@ -1120,7 +1348,7 @@ class Nexus_Initial(Screen):
 		if Selected_Anime_Status == 'Unfragmented':
 			if self.ids.Text_Frag_Anime_1.text != '' and self.ids.Text_Frag_Anime_2.text != '' and self.ids.Text_Frag_Anime_3.text != '': MsgBox(self, 'Fragmentation limit reached.')
 			else:
-				Selected_Anime_Status = MOD['Status'][MOD['World'] == Selected_Anime_Name] = 'In Progress' #Update variable and assign to MOD and Selection Label
+				Selected_Anime_Status = MOD['Status'][MOD['World'] == Selected_Anime_Name] = 'Resonated' #Update variable and assign to MOD and Selection Label
 				self.ids.List_Dest_Anime._layout_manager.clear_selection()
 				self.ids.List_Dest_Anime.refresh_from_data()
 				x = [i['item_World'] for i in self.ids.List_Dest_Anime.data]
@@ -1132,7 +1360,7 @@ class Nexus_Initial(Screen):
 				self.Select_Anime(Selected_Anime_Name)
 				self.Update_Stats(True,False,False,False)
 				self.Save(False)
-				MsgBox(self, Selected_Anime_Name + ' added to Fragmentation list.')
+				MsgBox(self, Selected_Anime_Name + ' resonated. Fragmentation is available.')
 		elif Selected_Anime_Status == None:
 			for i in range(3):
 				if eval('self.ids.Text_Frag_Anime_' + str(i+1) + '.text == ""'): #Enable Fragmentation TextInput
@@ -1144,23 +1372,23 @@ class Nexus_Initial(Screen):
 	def ConquerNew_Check(self, n):
 		if eval('self.ids.Text_Frag_Anime_' + str(n+1) + '.disabled') == False: #If Selected Input unfocused
 			Text = eval('self.ids.Text_Frag_Anime_' + str(n+1) + '.text')
-			if len(MOD.query('Status in' + str(['In Progress', 'Conquered']))[MOD['World'] == Text]) == 1: exec('self.ids.Text_Frag_Anime_' + str(n+1) + '.foreground_color = (1,.5,0,1)') #If in Progress or already Conquered
+			if len(MOD.query('Status in' + str(['Resonated', 'Conquered']))[MOD['World'] == Text]) == 1: exec('self.ids.Text_Frag_Anime_' + str(n+1) + '.foreground_color = (1,.5,0,1)') #If in Progress or already Conquered
 			elif len(MOD[MOD['World'] == Text][MOD['Status'] == 'Unfragmented']) == 1: exec('self.ids.Text_Frag_Anime_' + str(n+1) + '.foreground_color = (1,1,0,1)') #If Unfragmented
 			else: exec('self.ids.Text_Frag_Anime_' + str(n+1) + '.foreground_color = (0,1,0,1)') #If not exist in MOD
 
 	def ConquerNew_legalize(self, n):
 		if not eval('self.ids.Text_Frag_Anime_' + str(n+1) + '.focus'): #If Selected Input unfocused
 			Text = eval('self.ids.Text_Frag_Anime_' + str(n+1) + '.text')
-			if Text == '': MsgBox(self, 'Cancelled. Please fill the new World you want to connect.') #If left empty
+			if Text == '': MsgBox(self, 'Cancelled. Please fill the new World you want to resonate.') #If left empty
 			else:
-				if len(MOD[MOD['World'] == Text][MOD['Status'] == 'In Progress']) == 1: #If in Progress
+				if len(MOD[MOD['World'] == Text][MOD['Status'] == 'Resonated']) == 1: #If in Progress
 					MsgBox(self, 'Current World is already in Fragmentation list.')
 					exec('self.ids.Text_Frag_Anime_' + str(n+1) + '.text = ""')
 				elif len(MOD[MOD['World'] == Text][MOD['Status'] == 'Conquered']) == 1: #If already Conquered
 					MsgBox(self, 'Cannot refragment a conquered World.')
 					exec('self.ids.Text_Frag_Anime_' + str(n+1) + '.text = ""')
 				elif len(MOD[MOD['World'] == Text][MOD['Status'] == 'Unfragmented']) == 1: #If Unfragmented
-					MOD['Status'][MOD['World'] == Text] = 'In Progress' #Assign Status to MOD
+					MOD['Status'][MOD['World'] == Text] = 'Resonated' #Assign Status to MOD
 					MOD['Order'][MOD['World'] == Text] = n
 					exec('self.ids.Text_Frag_Episode_' + str(n+1) + '.text = str(0)') #Fill Episode TextInput
 					self.Select_Anime(Text)
@@ -1171,37 +1399,78 @@ class Nexus_Initial(Screen):
 					exec('self.ids.Text_Frag_Anime_' + str(n+1) + '.text = ""')
 			exec('self.ids.Text_Frag_Anime_' + str(n+1) + '.disabled = True')
 
+	def Populate(self, n):
+		try: n = int(n)
+		except ValueError: n = 0
+		if n == 0: MsgBox(self, 'Please fill the legit number of Fragments to populate.')
+		else:
+			MOD['Fragments'][MOD[MOD['World'] == Selected_Anime_Name_Edit].index[0]] = [Selected_Anime_Name_Edit + ' Episode ' + str(i+1) + '.mp4' for i in range(n)] #Fill Episodes
+			MOD['Protocol'][MOD[MOD['World'] == Selected_Anime_Name_Edit].index[0]] = MOD['Protocol'][MOD[MOD['World'] == Selected_Anime_Name_Edit].index[0]].replace('AMORPHOUS', 'OUTER') #Change Protocol
+			self.Update_Anime(Selected_Anime_Name_Edit)
+			self.Update_Stats(False,False,True,True)
+			self.Select_Anime_Assemble(Selected_Anime_Name_Edit, MOD['Protocol'][MOD['World'] == Selected_Anime_Name_Edit].reset_index(drop=True)[0])
+			self.Save(False)
+			MsgBox(self, Selected_Anime_Name_Edit + ' populated with ' + str(n) + (' Fragments.' if n != 1 else ' Fragment.'))
+			self.ids.Text_Install_Episode_Name.text = ''
+
 	def Install_Anime(self, Protocol):
 		global MOD
-		Name = str(self.ids.Text_Install_Anime_Name.text)
+		Name = self.ids.Text_Install_Anime_Name.text
 		Episodes = 0 if self.ids.Text_Install_Anime_Episodes.text == '' else int(self.ids.Text_Install_Anime_Episodes.text)
 		if len(MOD[MOD['World'] == Name]) != 0: MsgBox(self, Name + ' already exist. Installation failed.')
 		else: 
-			MOD = MOD.append(pd.DataFrame(data = [[Name, Protocol, [Name + ' Episode ' + str(i) + '.mp4' for i in range(Episodes)] if Episodes != 1 else [Name], 'Unfragmented', 0, np.nan]], columns = MOD.columns), ignore_index=True)
+			MOD = MOD.append(pd.DataFrame(data = [[Name, Protocol, [Name + ' Episode ' + str(i+1) + '.mp4' for i in range(Episodes)] if Episodes != 1 else [Name + '.mp4'], 'Unfragmented', 0, np.nan]], columns = MOD.columns), ignore_index=True)
 			Sort(self)
 			self.ids.Text_Install_Anime_Name.text = self.ids.Text_Install_Anime_Episodes.text = ''
 			self.Select_Mode_Anime('Assemble')
 			self.Save(False)
 			MsgBox(self, Name + ' installed on ' + Protocol + '.')
 
-	def Install_Episode(self, Name):
-		pass
+	def Install_Anime_Check(self):
+		self.ids.Text_Install_Anime_Name.foreground_color = self.ids.Text_Install_Anime_Episodes.foreground_color = (0,1,0,1) if len(MOD[MOD['World'] == self.ids.Text_Install_Anime_Name.text]) == 0 else (1,.5,0,1)
+
+	def Install_Episode(self):
+		Name = self.ids.Text_Install_Episode_Name.text + '.mp4'
+		if Name in MOD['Fragments'][MOD['World'] == Selected_Anime_Name_Edit].reset_index(drop=True)[0]: MsgBox(self, self.ids.Text_Install_Episode_Name.text + ' already exist. Installation failed.')
+		else:
+			MOD['Fragments'][MOD[MOD['World'] == Selected_Anime_Name_Edit].index[0]] += [Name] #Assign To Episode List
+			MOD['Protocol'][MOD[MOD['World'] == Selected_Anime_Name_Edit].index[0]] = MOD['Protocol'][MOD[MOD['World'] == Selected_Anime_Name_Edit].index[0]].replace('AMORPHOUS', 'OUTER') #Change Protocol
+			self.Update_Anime(Selected_Anime_Name_Edit)
+			self.Update_Stats(False,False,True,True)
+			self.Select_Anime_Assemble(Selected_Anime_Name_Edit, MOD['Protocol'][MOD['World'] == Selected_Anime_Name_Edit].reset_index(drop=True)[0])
+			self.Save(False)
+			MsgBox(self, self.ids.Text_Install_Episode_Name.text + ' installed on World: ' + Selected_Anime_Name_Edit)
+			self.ids.Text_Install_Episode_Name.text = ''
+
+	def Install_Episode_Check(self):
+		self.ids.Text_Install_Episode_Name.foreground_color = (0,1,0,1) if self.ids.Text_Install_Episode_Name.text not in [i['item_Fragment'] for i in self.ids.List_Dest_Episode.data] else (1,.5,0,1)
 
 	def Remove_Anime(self, Selection):
 		if len(Selection) == 0: MsgBox(self, 'Nothing selected to uninstall.')
 		else:
 			global MOD
-			for i in MOD.query('World in ' + str(Selection) + ' and Status in ' + str(['Conquered', 'In Progress']) + ' and Protocol in ' + str(Protocol[4:6])).index: [MOD['Fragments'][i], MOD['Protocol'][i]] = [[], MOD['Protocol'][i].replace('OUTER', 'AMORPHOUS')]
-			MOD = MOD.query('World not in ' + str(Selection) + ' or Status in ' + str(['Conquered', 'In Progress'])).reset_index(drop=True) #IMPORTANT: DON'T DROP 'CONQUERED' OR 'IN PROGRESS' status otherwise the Reminiscence will be broken. Instead, I emptied it.
+			for i in MOD.query('World in ' + str(Selection) + ' and Status in ' + str(['Conquered', 'Resonated']) + ' and Protocol in ' + str(Protocol[4:6])).index: [MOD['Fragments'][i], MOD['Protocol'][i]] = [[], MOD['Protocol'][i].replace('OUTER', 'AMORPHOUS')]
+			MOD = MOD.query('World not in ' + str(Selection) + ' or Status in ' + str(['Conquered', 'Resonated'])).reset_index(drop=True) #IMPORTANT: DON'T DROP 'CONQUERED' OR 'IN PROGRESS' status otherwise the Reminiscence will be broken. Instead, I emptied it.
 			if Selected_Anime_Name in Selection: self.Select_Anime(None) #Unselect if currently selected
-			self.Update_Stats(True,True,True,True)
+			self.Update_Stats(False,False,True,True)
 			self.Select_Mode_Anime('Assemble')
 			print(Selection)
 			self.Save(False)
 			MsgBox(self, str(len(Selection)) + (' World' if len(Selection) == 1 else ' Worlds') + ' uninstalled.')
 
-	def Remove_Episode(self, Name):
-		pass
+	def Remove_Episode(self, Selection):
+		if len(Selection) == 0: MsgBox(self, 'Nothing selected to uninstall.')
+		else:
+			global Selected_Anime_Protocol_Edit
+			Selection = [i + '.mp4' for i in Selection]
+			MOD['Fragments'][MOD[MOD['World'] == Selected_Anime_Name_Edit].index[0]] = [i for i in MOD['Fragments'][MOD['World'] == Selected_Anime_Name_Edit].reset_index(drop=True)[0] if i not in Selection]
+			if len(MOD['Fragments'][MOD['World'] == Selected_Anime_Name_Edit].reset_index(drop=True)[0]) == 0: MOD['Protocol'][MOD[MOD['World'] == Selected_Anime_Name_Edit].index[0]] = MOD['Protocol'][MOD[MOD['World'] == Selected_Anime_Name_Edit].index[0]].replace('OUTER', 'AMORPHOUS') #Change Protocol
+			Selected_Anime_Protocol_Edit = MOD['Protocol'][MOD['World'] == Selected_Anime_Name_Edit].reset_index(drop=True)[0]
+			self.Update_Anime(Selected_Anime_Name_Edit)
+			self.Update_Stats(False,False,True,True)
+			self.Select_Mode_Episode('Assemble')
+			self.Save(False)
+			MsgBox(self, str(len(Selection)) + ' Fragments uninstalled on ' + Selected_Anime_Name_Edit + '.')
 
 	def Combine_Select(self):
 		global Selected_Anime_ToCombine
@@ -1211,7 +1480,9 @@ class Nexus_Initial(Screen):
 			global MOD
 			self.Fill_List_Dest_Anime(MOD.query('World not in ' + str(Selected_Anime_ToCombine)).query('Protocol in ' + str(Protocol[4:])).reset_index(drop=True)) #Remove selected worlds from the list
 			self.ids.List_Dest_Anime._layout_manager.multiselect = self.ids.Button_Menu_Execute.disabled = False #Turn off multiselection and enable Execute button
-			self.ids.Button_Menu_Combine.disabled = self.ids.Button_Menu_Install.disabled = self.ids.Button_Menu_Uninstall.disabled = True #Disable others
+			self.ids.Button_Menu_Combine.disabled = self.ids.Button_Menu_Install_Anime.disabled = self.ids.Button_Menu_Uninstall_Anime.disabled = True #Disable others
+			for i in self.ids.List_Dest_Anime.data: i['item_color_World'] = (.5,.75,1,1) #Change list color
+			self.ids.Button_Menu_Execute.on_release = self.Combine_Execute
 			print(Selected_Anime_ToCombine)
 			MsgBox(self, str(len(Selected_Anime_ToCombine)) + (' World' if len(Selected_Anime_ToCombine) == 1 else ' Worlds') + ' selected. Please select a world to Combine with.')
 
@@ -1222,12 +1493,35 @@ class Nexus_Initial(Screen):
 			MOD['Fragments'][MOD[MOD['World'] == Selection[0]].index[0]] = MOD['Fragments'][MOD['World'] == Selection[0]].reset_index(drop=True)[0] + MOD.query('World in ' + str(Selected_Anime_ToCombine))['Fragments'].values.sum() #Assign combination to MOD
 			MOD['Protocol'][MOD['World'] == Selection[0]] = MOD['Protocol'][MOD['World'] == Selection[0]].reset_index(drop=True)[0].replace('AMORPHOUS', 'OUTER' if len(MOD['Fragments'][MOD['World'] == Selection[0]].reset_index(drop=True)[0]) != 0 else 'AMORPHOUS') #Update Protocol
 			self.Remove_Anime(Selected_Anime_ToCombine)
-			if Selected_Anime_Name == Selection[0]:  #If currently selected
+			if Selected_Anime_Name == Selection[0]: #If currently selected
 				Selected_Anime_Protocol = MOD['Protocol'][MOD['World'] == Selected_Anime_Name].reset_index(drop=True)[0]
 				self.ids.Label_Selected_Anime_Protocol.text = 'Protocol: ' + Selected_Anime_Protocol
 				Selected_Anime_Fragments = len(MOD['Fragments'][MOD['World'] == Selected_Anime_Name].reset_index(drop=True)[0])
 				self.ids.Label_Selected_Anime_Fragmented.text = str(Selected_Anime_Fragmented) + '/' + (str(Selected_Anime_Fragments) if Selected_Anime_Fragments != 0 else '???')
 			MsgBox(self, str(len(Selected_Anime_ToCombine)) +  (' World' if len(Selected_Anime_ToCombine) == 1 else ' Worlds') + ' combined into ' + Selection[0] + '.')
+
+	def Transfer_Select(self):
+		global Selected_Episode_ToCombine
+		Selected_Episode_ToCombine = [self.ids.List_Dest_Episode.data[i]['item_Fragment'] for i in self.ids.List_Dest_Episode._layout_manager.selected_nodes]
+		if len(Selected_Episode_ToCombine) == 0: MsgBox(self, 'Nothing selected to transfer.')
+		else:
+			self.Fill_List_Dest_Anime(MOD.query('Protocol in ' + str(Protocol[4:]))[MOD['World'] != Selected_Anime_Name_Edit].reset_index(drop=True)) #Remove selected world from the list
+			self.ids.List_Dest_Anime._layout_manager.multiselect = self.ids.Button_Menu_Execute.disabled = False #Turn off multiselection and enable Execute button
+			self.ids.Button_Menu_Combine.disabled = self.ids.Button_Menu_Install_Anime.disabled = self.ids.Button_Menu_Uninstall_Anime.disabled = True #Disable others
+			for i in self.ids.List_Dest_Anime.data: i['item_color_World'] = (.5,.75,1,1) #Change list color
+			[self.ids.Management_Misc.current, self.ids.Management_Menu.current] = ['Screen_Misc_Anime', 'Screen_Menu_Assemble_Anime'] #Shift
+			self.ids.Button_Menu_Execute.on_release = self.Transfer_Execute
+			print(Selected_Episode_ToCombine)
+			MsgBox(self, str(len(Selected_Episode_ToCombine)) + (' Fragment' if len(Selected_Episode_ToCombine) == 1 else ' Fragments') + ' selected. Please select a world to Transfer to.')
+
+	def Transfer_Execute(self):
+		Selection = [self.ids.List_Dest_Anime.data[i]['item_World'] for i in self.ids.List_Dest_Anime._layout_manager.selected_nodes]
+		if len(Selection) == 0: MsgBox(self, 'Please select a world to Transfer to.')
+		else:
+			MOD['Fragments'][MOD[MOD['World'] == Selection[0]].index[0]] += [i + '.mp4' for i in Selected_Episode_ToCombine] #Assign combination to MOD
+			MOD['Protocol'][MOD['World'] == Selection[0]] = MOD['Protocol'][MOD['World'] == Selection[0]].reset_index(drop=True)[0].replace('AMORPHOUS', 'OUTER' if len(MOD['Fragments'][MOD['World'] == Selection[0]].reset_index(drop=True)[0]) != 0 else 'AMORPHOUS') #Update Protocol
+			self.Remove_Episode(Selected_Episode_ToCombine)
+			self.Select_Mode_Anime('Assemble')
 
 	def AlterProtocol_Confirm(self):
 		[Settings['Protocol: CENTRAL REGNUM'], Settings['Protocol: LUX DOMINIUM'], Settings['Protocol: NOBILIS MUNDI'], Settings['Protocol: MYSTERIUM FIDEI'], Settings['Protocol: INCERTUS TERRAE']] =  [self.ids.Text_Protocol_1.text, self.ids.Text_Protocol_2.text, self.ids.Text_Protocol_3.text, self.ids.Text_Protocol_4.text, self.ids.Text_Protocol_5.text]
@@ -1252,6 +1546,98 @@ class Nexus_Initial(Screen):
 		[self.ids.Text_Function_1.text, self.ids.Text_Function_2.text, self.ids.Text_Function_3.text, self.ids.Text_Function_4.text] = [Settings['Objective_' + i] for i in ['Easy', 'Normal', 'Hard', 'Insane']]
 		self.ids.Button_MissionFunction_Confirm.color = (0,1,1,1)
 
+	def Synchronize(self):
+		global MOD
+		for i in Protocol[:4]: #For every protocol
+			if not os.path.isdir(Settings['Protocol: ' + i]): pass #If protocol not exist
+			else: #If Protocol exist
+				x = MOD.query('World in ' + str(next(os.walk(Settings['Protocol: ' + i]))[1])).index #Get indexes of all existing Worlds in MOD
+				y = pd.Series(data = [next(os.walk(Settings['Protocol: ' + i] + '\\' + MOD['World'][j]))[2] for j in x], index = x) # Series of List of Episodes in each World
+				z = pd.Series(data = [i] * len(x), index = x) #Series of Protocol
+				MOD.update(y.to_frame('Fragments')) #Combine it into MOD
+				MOD.update(z.to_frame('Protocol')) #Combine it into MOD
+				n = [j for j in next(os.walk(Settings['Protocol: ' + i]))[1] if j not in MOD['World'].tolist()] #List of newly added
+				if len(n) != 0: MOD = MOD.append(pd.DataFrame(data={'World': n,
+																	'Protocol': [i] * len(n),
+																	'Fragments': [next(os.walk(Settings['Protocol: ' + i] + '\\' + j))[2] for j in n],
+																	'Status': ['Unfragmented'] * len(n),
+																	'Fragmented': [0] * len(n),
+																	'Order': [np.nan] * len(n)}), ignore_index=True)
+				x = MOD.query('World not in ' + str(next(os.walk(Settings['Protocol: ' + i]))[1]))[MOD['Protocol'] == i].index #Get indexes of all NON-existing Worlds in MOD
+				y = pd.Series(data = [list(map(lambda k: k[:-3] + 'mp4', MOD['Fragments'][j])) for j in x], index = x) # Series of List of Episodes in each World (converted into mp4)
+				z = pd.Series(data = [('OUTER ' if len(MOD['Fragments'][j]) != 0 else 'AMORPHOUS ') + ('SAPIENTIA' if MOD['Protocol'][j] in Protocol[:3] else 'MYSTERIUM') for j in x], index = x) #Series of Protocol
+				MOD.update(y.to_frame('Fragments')) #Combine it into MOD
+				MOD.update(z.to_frame('Protocol')) #Combine it into MOD
+		Sort(self)
+		self.Save(False)
+		MsgBox(self, 'Synchronize completed.')
+
+	def Backup(self):
+		if self.Backup_Check(): #If path exist
+			FolderName = 'MAGNUM OPUS DEI ' + str(datetime.datetime.now().year) + "%02d" % (datetime.datetime.now().month) + "%02d" % (datetime.datetime.now().day) + (' (' + self.ids.Text_Backup_Msg.text + ')' if self.ids.Text_Backup_Msg.text != '' else '') #Create folder name
+			if os.path.isdir(self.ids.Text_Backup_Protocol.text + '\\' + FolderName): #If already exist
+				if self.ids.Label_Backup_OnExisting.text == 'Overwrite':
+					shutil.rmtree(self.ids.Text_Backup_Protocol.text + '\\' + FolderName)
+					self.Save(True)
+					shutil.copytree(os.getcwd(), self.ids.Text_Backup_Protocol.text + '\\' + FolderName) #Copy this folder
+					MsgBox(self, 'Remnant already exist. Old remnant has been overwritten.')
+				elif self.ids.Label_Backup_OnExisting.text == 'Duplicate':
+					self.Save(True)
+					i = 0
+					while os.path.isdir(self.ids.Text_Backup_Protocol.text + '\\' + FolderName + ' (' + str(i) + ')'): i += 1 #Check if New named folder exist
+					shutil.copytree(os.getcwd(), self.ids.Text_Backup_Protocol.text + '\\' + FolderName + ' (' + str(i) + ')') #Copy this folder
+					MsgBox(self, 'Remnant already exist. Recreated new remnant.')
+				elif self.ids.Label_Backup_OnExisting.text == 'Cancel': MsgBox(self, 'Remnant already exist. Create remnant aborted.')
+			else:
+				self.Save(True)
+				shutil.copytree(os.getcwd(), self.ids.Text_Backup_Protocol.text + '\\' + FolderName) #Copy this folder
+		else: MsgBox(self, 'Destination not found. Failed to create remnant')
+
+	def Backup_Check(self):
+		x = os.path.isdir(self.ids.Text_Backup_Protocol.text)
+		if x: self.ids.Text_Backup_Protocol.foreground_color = (0,1,0,1)
+		else: self.ids.Text_Backup_Protocol.foreground_color = (1,0,0,1)
+		return x
+
+	def Backup_Reset(self):
+		self.ids.Text_Backup_Protocol.text = Settings['Backups']
+
+	def Backup_Set(self):
+		Settings['Backups'] = self.ids.Text_Backup_Protocol.text
+		self.Save(False)
+		MsgBox(self, 'New Backup location has been set.')
+
+	def SetOpacity(self, i):
+		hwnd = win32gui.GetForegroundWindow()
+		win32gui.SetWindowLong (hwnd, win32con.GWL_EXSTYLE, win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE) | win32con.WS_EX_LAYERED)
+		winxpgui.SetLayeredWindowAttributes(hwnd, win32api.RGB(0,0,0), int(i), win32con.LWA_ALPHA)
+
+	def FullScreen(self, i):
+		Window.fullscreen = i
+
+	def Upload(self):
+		global LOG
+		access_token = self.ids.Text_AccessToken.text
+		dbx = dropbox.Dropbox(access_token)
+		for From in ['INTERCONNECTION SYNAPSIS.py', 'MAGNUM OPUS DEI.csv', 'LOG.csv', 'SETTINGS.csv']: 
+			print('Uploading: ' + From)
+			To = '/MEMORIA EPHEMERAL/' + From
+			try: 
+				with open(From, 'rb') as f: dbx.files_upload(f.read(), To, mode=dropbox.files.WriteMode.overwrite)
+			except Exception as i:
+				print('Upload error: ' + From)
+				print(i)
+		print('Upload completed.')
+
+	def Upload_Reset(self):
+		self.ids.Text_AccessToken.text = Settings['Access_Token']
+
+	def Upload_Set(self):
+		if Settings['Access_Token'] != self.ids.Text_AccessToken.text: 
+			Settings['Access_Token'] = self.ids.Text_AccessToken.text
+			self.Save(False)
+			MsgBox(self, 'New Access Token has been set.')
+
 	def Save(self, save):
 		global Saved
 		Saved = save
@@ -1262,6 +1648,7 @@ class Nexus_Initial(Screen):
 			self.ids.Button_Menu_Save.color = (0,1,1,1)
 			MsgBox(self, 'Save completed.')
 			LOG.to_csv('LOG.csv', index=False, header=True)
+			if self.ids.Check_Upload.active: threading.Thread(target=self.Upload).start()
 		else: self.ids.Button_Menu_Save.color = (1,1,0,1)
 
 #Other Classes
@@ -1272,15 +1659,22 @@ class SBL_Dest_Anime(RecycleDataViewBehavior, BoxLayout):
 	index = None
 	selected = BooleanProperty(False)
 	selectable = BooleanProperty(True)
+	DoubleTap = False
 	def refresh_view_attrs(self, rv, index, data):
 		self.index = index
 		return super(SBL_Dest_Anime, self).refresh_view_attrs(rv, index, data)
 	def on_touch_down(self, touch):
 		if super(SBL_Dest_Anime, self).on_touch_down(touch): return True
-		if self.collide_point(*touch.pos) and self.selectable: return self.parent.select_with_touch(self.index, touch)
+		if self.collide_point(*touch.pos) and self.selectable:
+			self.DoubleTap = touch.is_double_tap 
+			return self.parent.select_with_touch(self.index, touch)
 	def apply_selection(self, rv, index, is_selected):
 		self.selected = is_selected
-		if self.selected and Selected_Mode_Anime != 'Assemble': App.get_running_app().root.Select_Anime(rv.data[index]['item_World'])
+		if self.DoubleTap:
+			if Selected_Mode_Anime == 'Assemble': 
+				if App.get_running_app().root.ids.Button_Menu_Execute.disabled: App.get_running_app().root.Select_Anime_Assemble(rv.data[rv._layout_manager._last_selected_node]['item_World'], rv.data[rv._layout_manager._last_selected_node]['item_Protocol'])
+			else: App.get_running_app().root.Select_Anime(rv.data[index]['item_World'])
+			self.DoubleTap = False 
 class SBL_Dest_Episode(RecycleDataViewBehavior, BoxLayout):
 	index = None
 	selected = BooleanProperty(False)
@@ -1293,7 +1687,8 @@ class SBL_Dest_Episode(RecycleDataViewBehavior, BoxLayout):
 		if self.collide_point(*touch.pos) and self.selectable: return self.parent.select_with_touch(self.index, touch)
 	def apply_selection(self, rv, index, is_selected):
 		self.selected = is_selected
-		if self.selected: App.get_running_app().root.Select_Episode(rv.data[index]['item_Fragment'], rv.data[index]['item_Extension_Real'])
+		if self.selected and Selected_Mode_Anime != 'Assemble': App.get_running_app().root.Select_Episode(rv.data[index]['item_Fragment'], rv.data[index]['item_Extension_Real'])
+
 class InterconnectionSynapsis(App):
 	def build(self):
 		self.title = 'Interconnection Synapsis'
